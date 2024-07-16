@@ -17,7 +17,7 @@ A simple Go application that fetches and displays the current weather conditions
 - A WeatherAPI access token
 - A `.env` file with the following variables:
 - 
-```go
+```
 WEATHER_ACCESS_TOKEN=your_weather_api_token
 DEFAULT_LOCATION=your_default_city
 NO_OF_DAYS=number_of_days_to_forecast
