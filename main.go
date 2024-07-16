@@ -1,56 +1,22 @@
 package main
 
 import (
-    "encoding/json"
-    "flag"
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "strconv"
-    "time"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
 
-    "github.com/fatih/color"
-    "github.com/joho/godotenv"
-)
-
-type (
-    Weather struct {
-        Location struct {
-            Name    string `json:"name"`
-            Country string `json:"country"`
-        } `json:"location"`
-        Current struct {
-            LastUpdatedEpoch int64   `json:"last_updated_epoch"`
-            Temperature      float64 `json:"temp_c"`
-            Condition        struct {
-                Text string `json:"text"`
-            } `json:"condition"`
-            WindSpeed    float64 `json:"wind_kph"`
-            Gusts        float64 `json:"gust_kph"`
-            ChanceOfRain int64   `json:"chance_of_rain"`
-        } `json:"current"`
-        Forecast struct {
-            ForecastDay []struct {
-                DateEpoch int64 `json:"date_epoch"`
-                Hours     []struct {
-                    DateEpoch   int64   `json:"time_epoch"`
-                    Temperature float64 `json:"temp_c"`
-                    Condition   struct {
-                        Text string `json:"text"`
-                    } `json:"condition"`
-                    WindSpeed    float64 `json:"wind_kph"`
-                    Gusts        float64 `json:"gust_kph"`
-                    ChanceOfRain int64   `json:"chance_of_rain"`
-                } `json:"hour"`
-            } `json:"forecastday"`
-        } `json:"forecast"`
-    }
+	"github.com/fatih/color"
+	"github.com/joho/godotenv"
 )
 
 var (
-    cityFlag string
-    daysFlag int
+	cityFlag string
+	daysFlag int
 )
 
 // main is the entry point of the application. It loads environment variables,
@@ -60,113 +26,116 @@ var (
 // The function does not take any parameters and does not return any values.
 func main() {
 
-    // Load environment variables from .env file
-    err := godotenv.Load()
-    if err != nil {
-        panic(err)
-    }
+	// Load environment variables from .env file
+	setupEnvironment()
 
-    flag.IntVar(&daysFlag, "days", 1, "Number of days to forecast")
-    flag.StringVar(&cityFlag, "city", os.Getenv("DEFAULT_LOCATION"), "Enter the name of the city")
-    flag.Parse()
+	// Get the number of days to forecast
+	var noOfDaysStr = os.Getenv("NO_OF_DAYS")
+	noOfDays, err := strconv.Atoi(noOfDaysStr)
+	if err != nil {
+		noOfDays = 1
+	}
 
-    // Read environment variables
-    token := os.Getenv("WEATHER_ACCESS_TOKEN")
-    q := cityFlag
+	// Parse the command-line flags
+	flag.IntVar(&daysFlag, "days", noOfDays, "Number of days to forecast")
+	flag.StringVar(&cityFlag, "city", os.Getenv("DEFAULT_LOCATION"), "Enter the name of the city")
+	flag.Parse()
 
-    noDays, err := strconv.Atoi(os.Getenv("NO_OF_DAYS"))
-    if err != nil {
-        panic(err)
-    }
+	// Retrieve the access token from the environment
+	token := os.Getenv("WEATHER_ACCESS_TOKEN")
 
-    if daysFlag > 0 {
-        noDays = daysFlag
-    }
+	// Construct the URL
+	url := fmt.Sprintf("https://api.weatherapi.com/v1/forecast.json?q=%s&days=%d&key=%s",
+		cityFlag, daysFlag, token)
 
-    // Construct the URL
-    url := "https://api.weatherapi.com/v1/forecast.json?q=" + q + "&days=" + strconv.Itoa(noDays) + "&key=" + token
+	// Call the API
+	res, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
 
-    // Call the API
-    res, err := http.Get(url)
-    if err != nil {
-        panic(err)
-    }
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cerr)
+		}
+	}()
 
-    defer func() {
-        if cerr := res.Body.Close(); cerr != nil {
-            fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cerr)
-        }
-    }()
+	// If Status is not OK 200, panic
+	if res.StatusCode != 200 {
+		panic("Weather Api not available")
+	}
 
-    // If Status is not OK 200, panic
-    if res.StatusCode != 200 {
-        panic("Weather Api not available")
-    }
+	// Read the response body
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
 
-    // Read the response body
-    body, err := io.ReadAll(res.Body)
-    if err != nil {
-        panic(err)
-    }
+	// Unmarshal the json into the provide
+	// struct reference
+	var weather Weather
+	err = json.Unmarshal(body, &weather)
+	if err != nil {
+		panic(err)
+	}
 
-    // Unmarshal the json into the provide
-    // struct reference
-    var weather Weather
-    err = json.Unmarshal(body, &weather)
-    if err != nil {
-        panic(err)
-    }
+	// Extract data from the struct
+	location, current, forecastDay := weather.Location, weather.Current, weather.Forecast.ForecastDay
 
-    // Extract data from the struct
-    location, current, forecastDay := weather.Location, weather.Current, weather.Forecast.ForecastDay
+	// Build header message
+	message := fmt.Sprintf("\n\n%s, %s\nCurrent Conditions\n",
+		location.Name, location.Country)
+	fmt.Println(message)
 
-    // Build header message
-    message := fmt.Sprintf("\n\n%s, %s\nCurrent Conditions\n",
-        location.Name, location.Country)
-    fmt.Println(message)
+	// Build and display current conditions
+	message = fmt.Sprintf("%.0f°c, %s. %d%% chance of rain\nwind %.0fkm/h, gusts %.0fkm/h\n\n",
+		current.Temperature, current.Condition.Text, current.ChanceOfRain, current.WindSpeed, current.Gusts)
+	color.Cyan(message)
 
-    // Build and display current conditions
-    message = fmt.Sprintf("%.0f°c, %s. %d%% chance of rain\nwind %.0fkm/h, gusts %.0fkm/h\n\n",
-        current.Temperature, current.Condition.Text, current.ChanceOfRain, current.WindSpeed, current.Gusts)
-    color.Cyan(message)
+	fmt.Println("Forecast:")
 
-    fmt.Println("Forecast:")
+	for _, fday := range forecastDay {
+		hours := fday.Hours
 
-    for _, fday := range forecastDay {
-        hours := fday.Hours
+		fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
 
-        fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
+		fmt.Println(fdate)
+		// Get the hourly forecasts and
+		// construct an output message
+		for _, hour := range hours {
+			date := time.Unix(hour.DateEpoch, 0)
 
-        fmt.Println(fdate)
-        // Get the hourly forecasts and
-        // construct an output message
-        for _, hour := range hours {
-            date := time.Unix(hour.DateEpoch, 0)
+			// If the hourly forecast is in the past
+			// ignore it and continue along
+			if date.Before(time.Now()) {
+				continue
+			}
 
-            // If the hourly forecast is in the past
-            // ignore it and continue along
-            if date.Before(time.Now()) {
-                continue
-            }
+			message = fmt.Sprintf("%s | %.0f°c | %s | %d%% rain | wind %.0f(%.0f) km/h",
+				date.Format("15:04"), hour.Temperature, hour.Condition.Text, hour.ChanceOfRain, hour.WindSpeed, hour.Gusts)
 
-            message = fmt.Sprintf("%s | %.0f°c | %s | %d%% rain | wind %.0f(%.0f) km/h",
-                date.Format("15:04"), hour.Temperature, hour.Condition.Text, hour.ChanceOfRain, hour.WindSpeed, hour.Gusts)
+			// Chance of rain and Wind gusts
+			// will change the color.
+			if hour.ChanceOfRain < 50 {
+				if hour.Gusts < 45 {
+					color.Green(message)
+				} else {
+					color.Yellow(message)
+				}
+			} else {
+				if hour.Gusts < 45 {
+					color.Cyan(message)
+				} else {
+					color.Red(message)
+				}
+			}
+		}
+	}
+}
 
-            // Chance of rain and Wind gusts
-            // will change the color.
-            if hour.ChanceOfRain < 50 {
-                if hour.Gusts < 45 {
-                    color.Green(message)
-                } else {
-                    color.Yellow(message)
-                }
-            } else {
-                if hour.Gusts < 45 {
-                    color.Cyan(message)
-                } else {
-                    color.Red(message)
-                }
-            }
-        }
-    }
+func setupEnvironment() {
+	err := godotenv.Load()
+	if err != nil {
+		panic(err)
+	}
 }
