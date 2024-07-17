@@ -111,7 +111,7 @@ func main() {
 				continue
 			}
 
-			message = fmt.Sprintf("%s | %.0f°c | %s | %d%% rain | wind %.0f(%.0f) km/h",
+			message = fmt.Sprintf("%s | %2.0f°c | %-20s | %4d%% rain | wind %3.0f(%2.0f) km/h",
 				date.Format("15:04"), hour.Temperature, hour.Condition.Text, hour.ChanceOfRain, hour.WindSpeed, hour.Gusts)
 
 			// Chance of rain and Wind gusts
