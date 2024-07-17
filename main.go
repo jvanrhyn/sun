@@ -10,14 +10,56 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/joho/godotenv"
+
+	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 var (
 	cityFlag string
 	daysFlag int
+
+	baseStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240"))
 )
+
+type model struct {
+	table table.Model
+}
+
+func (m model) Init() tea.Cmd {
+	return tea.SetWindowTitle("Weather Forecast")
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			if m.table.Focused() {
+				m.table.Blur()
+			} else {
+				m.table.Focus()
+			}
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "enter":
+			return m, tea.Batch(
+				tea.Printf("Let's go to %s!", m.table.SelectedRow()[1]),
+			)
+		}
+	}
+	m.table, cmd = m.table.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	return baseStyle.Render(m.table.View()) + "\n"
+}
 
 // main is the entry point of the application. It loads environment variables,
 // parses command-line flags, constructs a URL to call a weather API, and processes
@@ -28,6 +70,17 @@ func main() {
 
 	// Load environment variables from .env file
 	setupEnvironment()
+
+	columns := []table.Column{
+		{Title: "Time", Width: 6},
+		{Title: "Temp °C", Width: 7},
+		{Title: "Conditions", Width: 30},
+		{Title: "Rain", Width: 5},
+		{Title: "Wind", Width: 15},
+		{Title: "Gusts", Width: 15},
+	}
+
+	var rows []table.Row
 
 	// Get the number of days to forecast
 	var noOfDaysStr = os.Getenv("NO_OF_DAYS")
@@ -82,24 +135,27 @@ func main() {
 	// Extract data from the struct
 	location, current, forecastDay := weather.Location, weather.Current, weather.Forecast.ForecastDay
 
-	// Build header message
-	message := fmt.Sprintf("\n\n%s, %s\nCurrent Conditions\n",
-		location.Name, location.Country)
-	fmt.Println(message)
+	rows = append(rows, table.Row{"------", "-------",
+		fmt.Sprintf("%s, %s", location.Name, location.Country),
+		"-----", "---------------", "---------------"})
 
 	// Build and display current conditions
-	message = fmt.Sprintf("%.0f°c, %s. %d%% chance of rain\nwind %.0fkm/h, gusts %.0fkm/h\n\n",
-		current.Temperature, current.Condition.Text, current.ChanceOfRain, current.WindSpeed, current.Gusts)
-	color.Cyan(message)
-
-	fmt.Println("Forecast:")
+	rows = append(rows, table.Row{
+		"Now",
+		fmt.Sprintf("%.0f", current.Temperature),
+		current.Condition.Text,
+		fmt.Sprintf("%d 3v%%", current.ChanceOfRain),
+		fmt.Sprintf("%.0f", current.WindSpeed),
+		fmt.Sprintf("%.0f", current.Gusts),
+	})
 
 	for _, fday := range forecastDay {
 		hours := fday.Hours
 
 		fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
+		rows = append(rows, table.Row{"-----", "-------", fdate,
+			"-----", "---------------", "---------------"})
 
-		fmt.Println(fdate)
 		// Get the hourly forecasts and
 		// construct an output message
 		for _, hour := range hours {
@@ -111,25 +167,41 @@ func main() {
 				continue
 			}
 
-			message = fmt.Sprintf("%s | %.0f°c | %s | %d%% rain | wind %.0f(%.0f) km/h",
-				date.Format("15:04"), hour.Temperature, hour.Condition.Text, hour.ChanceOfRain, hour.WindSpeed, hour.Gusts)
+			rows = append(rows, table.Row{
+				date.Format("15:04"),
+				fmt.Sprintf("%.0f", hour.Temperature),
+				hour.Condition.Text,
+				fmt.Sprintf("%d%%", hour.ChanceOfRain),
+				fmt.Sprintf("%.0f", hour.WindSpeed),
+				fmt.Sprintf("%.0f", hour.Gusts),
+			})
 
-			// Chance of rain and Wind gusts
-			// will change the color.
-			if hour.ChanceOfRain < 50 {
-				if hour.Gusts < 45 {
-					color.Green(message)
-				} else {
-					color.Yellow(message)
-				}
-			} else {
-				if hour.Gusts < 45 {
-					color.Cyan(message)
-				} else {
-					color.Red(message)
-				}
-			}
 		}
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(15),
+	)
+
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	t.SetStyles(s)
+
+	m := model{t}
+	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		fmt.Println("Error running program:", err)
+		os.Exit(1)
 	}
 }
 
