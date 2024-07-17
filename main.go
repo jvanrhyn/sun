@@ -71,14 +71,7 @@ func main() {
 	// Load environment variables from .env file
 	setupEnvironment()
 
-	columns := []table.Column{
-		{Title: "Time", Width: 6},
-		{Title: "Temp °C", Width: 7},
-		{Title: "Conditions", Width: 30},
-		{Title: "Rain", Width: 5},
-		{Title: "Wind", Width: 15},
-		{Title: "Gusts", Width: 15},
-	}
+	columns := setupColumns()
 
 	var rows []table.Row
 
@@ -179,6 +172,35 @@ func main() {
 		}
 	}
 
+	t := setupTable(columns, rows)
+
+	m := model{t}
+	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		fmt.Println("Error running program:", err)
+		os.Exit(1)
+	}
+}
+
+func setupColumns() []table.Column {
+	columns := []table.Column{
+		{Title: "Time", Width: 6},
+		{Title: "Temp °C", Width: 7},
+		{Title: "Conditions", Width: 30},
+		{Title: "Rain", Width: 5},
+		{Title: "Wind", Width: 15},
+		{Title: "Gusts", Width: 15},
+	}
+	return columns
+}
+
+func setupEnvironment() {
+	err := godotenv.Load()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func setupTable(columns []table.Column, rows []table.Row) table.Model {
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
@@ -198,16 +220,5 @@ func main() {
 		Bold(false)
 	t.SetStyles(s)
 
-	m := model{t}
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
-	}
-}
-
-func setupEnvironment() {
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
-	}
+	return t
 }
