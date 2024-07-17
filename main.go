@@ -130,16 +130,16 @@ func main() {
 
 	rows = append(rows, table.Row{"------", "-------",
 		fmt.Sprintf("%s, %s", location.Name, location.Country),
-		"-----", "---------------", "---------------"})
+		"-----", "----", "-----"})
 
 	// Build and display current conditions
 	rows = append(rows, table.Row{
 		"Now",
-		fmt.Sprintf("%.0f", current.Temperature),
-		current.Condition.Text,
-		fmt.Sprintf("%d%%", current.ChanceOfRain),
-		fmt.Sprintf("%.0f", current.WindSpeed),
-		fmt.Sprintf("%.0f", current.Gusts),
+		fmt.Sprintf("%2.0f", current.Temperature),
+		fmt.Sprintf("%-25s", current.Condition.Text),
+		fmt.Sprintf("%3d%%", current.ChanceOfRain),
+		fmt.Sprintf("%3.0f", current.WindSpeed),
+		fmt.Sprintf("%3.0f", current.Gusts),
 	})
 
 	for _, fday := range forecastDay {
@@ -147,7 +147,7 @@ func main() {
 
 		fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
 		rows = append(rows, table.Row{"-----", "-------", fdate,
-			"-----", "---------------", "---------------"})
+			"-----", "----", "-----"})
 
 		// Get the hourly forecasts and
 		// construct an output message
@@ -162,11 +162,11 @@ func main() {
 
 			rows = append(rows, table.Row{
 				date.Format("15:04"),
-				fmt.Sprintf("%.0f", hour.Temperature),
-				hour.Condition.Text,
-				fmt.Sprintf("%d%%", hour.ChanceOfRain),
-				fmt.Sprintf("%.0f", hour.WindSpeed),
-				fmt.Sprintf("%.0f", hour.Gusts),
+				fmt.Sprintf("%2.0f", hour.Temperature),
+				fmt.Sprintf("%-25s", hour.Condition.Text),
+				fmt.Sprintf("%3d%%", hour.ChanceOfRain),
+				fmt.Sprintf("%3.0f", hour.WindSpeed),
+				fmt.Sprintf("%3.0f", hour.Gusts),
 			})
 
 		}
@@ -185,10 +185,10 @@ func setupColumns() []table.Column {
 	columns := []table.Column{
 		{Title: "Time", Width: 6},
 		{Title: "Temp °C", Width: 7},
-		{Title: "Conditions", Width: 30},
+		{Title: "Conditions", Width: 25},
 		{Title: "Rain", Width: 5},
-		{Title: "Wind", Width: 15},
-		{Title: "Gusts", Width: 15},
+		{Title: "Wind", Width: 4},
+		{Title: "Gusts", Width: 5},
 	}
 	return columns
 }
@@ -205,7 +205,7 @@ func setupTable(columns []table.Column, rows []table.Row) table.Model {
 		table.WithColumns(columns),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(15),
+		table.WithHeight(20),
 	)
 
 	s := table.DefaultStyles()
