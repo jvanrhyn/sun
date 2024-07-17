@@ -137,7 +137,7 @@ func main() {
 		"Now",
 		fmt.Sprintf("%.0f", current.Temperature),
 		current.Condition.Text,
-		fmt.Sprintf("%d 3v%%", current.ChanceOfRain),
+		fmt.Sprintf("%d%%", current.ChanceOfRain),
 		fmt.Sprintf("%.0f", current.WindSpeed),
 		fmt.Sprintf("%.0f", current.Gusts),
 	})
