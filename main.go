@@ -21,6 +21,8 @@ import (
 var (
 	cityFlag string
 	daysFlag int
+	height   int
+	width    int
 
 	baseStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.NormalBorder()).
@@ -38,6 +40,13 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		width = msg.Width
+		height = 7
+		if msg.Height-5 > height {
+			height = msg.Height - 5
+		}
+		m.table.SetHeight(height)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
@@ -215,7 +224,7 @@ func setupTable(columns []table.Column, rows []table.Row) table.Model {
 		table.WithColumns(columns),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(20),
+		table.WithHeight(height),
 	)
 
 	s := table.DefaultStyles()
