@@ -22,7 +22,6 @@ var (
 	cityFlag string
 	daysFlag int
 	height   int
-	width    int
 
 	baseStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.NormalBorder()).
@@ -41,7 +40,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		width = msg.Width
 		height = 7
 		if msg.Height-5 > height {
 			height = msg.Height - 5
@@ -136,7 +134,9 @@ func main() {
 		hours := fday.Hours
 
 		fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
-		rows = append(rows, table.Row{"-----", "-------", fdate,
+		dayName := time.Unix(fday.DateEpoch, 0).Weekday().String()
+
+		rows = append(rows, table.Row{"-----", "-------", fmt.Sprintf("%s (%s)", fdate, dayName),
 			"-----", "----", "-----"})
 
 		// Get the hourly forecasts and
