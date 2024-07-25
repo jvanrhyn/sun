@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -95,35 +96,15 @@ func main() {
 		cityFlag, daysFlag, token)
 
 	// Call the API
-	res, err := http.Get(url)
-	if err != nil {
-		panic(err)
-	}
-
-	defer func() {
-		if cerr := res.Body.Close(); cerr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cerr)
-		}
-	}()
-
 	// If Status is not OK 200, panic
-	if res.StatusCode != 200 {
-		panic("Weather Api not available")
-	}
-
 	// Read the response body
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		panic(err)
-	}
-
 	// Unmarshal the json into the provide
 	// struct reference
 	var weather Weather
-	err = json.Unmarshal(body, &weather)
-	if err != nil {
-		panic(err)
+	action := func() {
+		weather = getWeatherData(url)
 	}
+	_ = spinner.New().Title("Getting your weather data...").Action(action).Run()
 
 	// Extract data from the struct
 	location, current, forecastDay := weather.Location, weather.Current, weather.Forecast.ForecastDay
@@ -179,6 +160,35 @@ func main() {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
+}
+
+func getWeatherData(url string) Weather {
+	res, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		if cerr := res.Body.Close(); cerr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cerr)
+		}
+	}()
+
+	if res.StatusCode != 200 {
+		panic("Weather Api not available")
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	var weather Weather
+	err = json.Unmarshal(body, &weather)
+	if err != nil {
+		panic(err)
+	}
+	return weather
 }
 
 func setupColumns() []table.Column {
