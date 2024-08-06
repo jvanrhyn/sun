@@ -55,8 +55,8 @@ func main() {
 	}
 
 	defer func() {
-		if cerr := res.Body.Close(); cerr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cerr)
+		if cErr := res.Body.Close(); cErr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cErr)
 		}
 	}()
 
@@ -97,9 +97,12 @@ func main() {
 	for _, fday := range forecastDay {
 		hours := fday.Hours
 
-		fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
+		date := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
 
-		fmt.Println(fdate)
+		// get the name of the dat for date
+		dayName := time.Unix(fday.DateEpoch, 0).Weekday().String()
+
+		fmt.Printf("%s (%s)\n", date, dayName)
 		// Get the hourly forecasts and
 		// construct an output message
 		for _, hour := range hours {
