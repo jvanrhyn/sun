@@ -16,7 +16,8 @@ A simple Go application that fetches and displays the current weather conditions
 - Go 1.16 or later
 - A WeatherAPI access token
 - A `.env` file with the following variables:
-- 
+- Obtain a free API key from [WeatherAPI](https://www.weatherapi.com/). 
+
 ```
 WEATHER_ACCESS_TOKEN=your_weather_api_token
 DEFAULT_LOCATION=your_default_city
