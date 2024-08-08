@@ -1,5 +1,5 @@
 
-# Weather Forecast Application
+# Weather Forecast Application 
 
 A simple Go application that fetches and displays the current weather conditions and forecast for a specified city using the WeatherAPI.
 

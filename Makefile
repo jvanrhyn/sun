@@ -20,7 +20,7 @@ copy_env:
 test:
 	go test -race -v ./...
 watch-test:
-	reflex -t 50ms -s -- sh -c 'gotest -race -v ./...'
+	reflex -t 50ms -s -- sh -c 'go test -race -v ./...'
 
 bench:
 	go test -benchmem -count 3 -bench ./...
