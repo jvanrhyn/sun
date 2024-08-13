@@ -1,4 +1,4 @@
-module gihub.com/jvanrhyn/sun
+module github.com/jvanrhyn/sun
 
 go 1.22.4
 
