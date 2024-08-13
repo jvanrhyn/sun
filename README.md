@@ -26,8 +26,6 @@ NO_OF_DAYS=number_of_days_to_forecast
 
 ### Installation
 
-
-
 1. Clone the repository:
    ```sh
    git clone https://github.com/jvanrhyn/sun.git
