@@ -201,6 +201,7 @@ func getWeatherData(url string) sun.Weather {
 	return weather
 }
 
+// setupColumns configures the columns for the table
 func setupColumns() []table.Column {
 	columns := []table.Column{
 		{Title: "Time", Width: 6},
