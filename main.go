@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/jvanrhyn/sun/cmd/sun"
 	"io"
 	"net/http"
 	"os"
@@ -107,7 +108,7 @@ func main() {
 	// Read the response body
 	// Unmarshal the json into the provide
 	// struct reference
-	var weather Weather
+	var weather sun.Weather
 	action := func() {
 		weather = getWeatherData(url)
 	}
@@ -171,7 +172,7 @@ func main() {
 	}
 }
 
-func getWeatherData(url string) Weather {
+func getWeatherData(url string) sun.Weather {
 	res, err := http.Get(url)
 	if err != nil {
 		panic(err)
@@ -192,7 +193,7 @@ func getWeatherData(url string) Weather {
 		panic(err)
 	}
 
-	var weather Weather
+	var weather sun.Weather
 	err = json.Unmarshal(body, &weather)
 	if err != nil {
 		panic(err)

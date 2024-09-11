@@ -1,4 +1,4 @@
-module gihub.com/jvanrhyn/sun
+module github.com/jvanrhyn/sun
 
 go 1.22.4
 
@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.26.6
 	github.com/charmbracelet/huh/spinner v0.0.0-20240725170654-1926040ccf04
 	github.com/charmbracelet/lipgloss v0.12.1
+	github.com/fatih/color v1.17.0
 	github.com/joho/godotenv v1.5.1
 )
 
@@ -18,6 +19,7 @@ require (
 	github.com/charmbracelet/x/windows v0.1.2 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
