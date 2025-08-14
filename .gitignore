@@ -41,3 +41,5 @@ cover.html
 .env
 sun
 
+# Crush agent local state
+.crush/
