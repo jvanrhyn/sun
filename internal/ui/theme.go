@@ -1,0 +1,18 @@
+package ui
+
+import "github.com/charmbracelet/lipgloss"
+
+type Theme struct {
+	Base   lipgloss.Style
+	Header lipgloss.Style
+	Footer lipgloss.Style
+	Error  lipgloss.Style
+}
+
+func DefaultTheme() Theme {
+	base := lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("240"))
+	header := lipgloss.NewStyle().Bold(true)
+	footer := lipgloss.NewStyle().Faint(true)
+	err := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	return Theme{Base: base, Header: header, Footer: footer, Error: err}
+}

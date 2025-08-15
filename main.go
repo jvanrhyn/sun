@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"flag"
 	"fmt"
-	"github.com/jvanrhyn/sun/cmd/sun"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,197 +11,159 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh/spinner"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/jvanrhyn/sun/cmd/sun"
+	"github.com/jvanrhyn/sun/internal/ui"
 )
 
-var (
-	cityFlag string
-	daysFlag int
-	height   int
+type status int
 
-	baseStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("240"))
+const (
+	loading status = iota
+	success
+	errorState
 )
+
+type fetchMsg struct{}
+
+type loadedMsg struct{ w sun.Weather }
+
+type errMsg struct{ err error }
+
+type keyMap struct {
+	Quit key.Binding
+	ToggleFocus key.Binding
+	Refresh key.Binding
+	Help key.Binding
+}
+
+func (k keyMap) ShortHelp() []key.Binding { return []key.Binding{k.Refresh, k.ToggleFocus, k.Help, k.Quit} }
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{{k.Refresh, k.ToggleFocus, k.Help, k.Quit}}
+}
 
 type model struct {
-	table table.Model
+	table   table.Model
+	spin    spinner.Model
+	help    help.Model
+	keys    keyMap
+	status  status
+	err     error
+	height  int
+	width   int
+	city    string
+	days    int
+	client  *sun.Client
+	lastUpd time.Time
+	th      ui.Theme
+}
+
+func initialModel(city string, days int, client *sun.Client) model {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	t := table.New(table.WithColumns(defaultColumns()), table.WithRows(nil), table.WithFocused(true))
+	h := help.New()
+	return model{
+		table:  t,
+		spin:   sp,
+		help:   h,
+		th:     ui.DefaultTheme(),
+		keys: keyMap{
+			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+			ToggleFocus: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "toggle focus")),
+			Refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+			Help:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		},
+		status: loading,
+		city:   city,
+		days:   days,
+		client: client,
+	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.SetWindowTitle("Weather Forecast")
+	return tea.Batch(
+		tea.SetWindowTitle("Weather Forecast"),
+		m.spin.Tick,
+		func() tea.Msg { return fetchMsg{} },
+	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		height = 7
-		if msg.Height-5 > height {
-			height = msg.Height - 5
-		}
-		m.table.SetHeight(height)
+		m.width, m.height = msg.Width, msg.Height
+		setAdaptiveDimensions(&m)
+		var cmd tea.Cmd
+		m.table, cmd = m.table.Update(msg)
+		return m, cmd
+	case fetchMsg:
+		m.status = loading
+		return m, tea.Batch(m.spin.Tick, fetchWeatherCmd(m.city, m.days, m.client))
+	case loadedMsg:
+		m.status = success
+		m.err = nil
+		m.lastUpd = time.Now()
+		m.table.SetRows(buildRows(msg.w))
+		return m, nil
+	case errMsg:
+		m.status = errorState
+		m.err = msg.err
+		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
+		switch {
+		case key.Matches(msg, m.keys.Quit):
+			return m, tea.Quit
+		case key.Matches(msg, m.keys.ToggleFocus):
 			if m.table.Focused() {
 				m.table.Blur()
 			} else {
 				m.table.Focus()
 			}
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "enter":
-			return m, tea.Batch(
-				tea.Printf("Let's go to %s!", m.table.SelectedRow()[1]),
-			)
+			return m, nil
+		case key.Matches(msg, m.keys.Refresh):
+			return m, func() tea.Msg { return fetchMsg{} }
+		case key.Matches(msg, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
+			return m, nil
 		}
+		var cmd tea.Cmd
+		m.table, cmd = m.table.Update(msg)
+		return m, cmd
+	default:
+		var cmds []tea.Cmd
+		var scmd tea.Cmd
+		m.spin, scmd = m.spin.Update(msg)
+		cmds = append(cmds, scmd)
+		var tcmd tea.Cmd
+		m.table, tcmd = m.table.Update(msg)
+		cmds = append(cmds, tcmd)
+		return m, tea.Batch(cmds...)
 	}
-	m.table, cmd = m.table.Update(msg)
-	return m, cmd
 }
 
 func (m model) View() string {
-	return baseStyle.Render(m.table.View()) + "\n"
-}
-
-// main is the entry point of the application. It loads environment variables,
-// parses command-line flags, constructs a URL to call a weather API, and processes
-// the response to display current weather conditions and a forecast.
-//
-// The function does not take any parameters and does not return any values.
-func main() {
-
-	// Load environment variables from .env file
-	setupEnvironment()
-
-	columns := setupColumns()
-
-	var rows []table.Row
-
-	// Get the number of days to forecast
-	var noOfDaysStr = os.Getenv("NO_OF_DAYS")
-	noOfDays, err := strconv.Atoi(noOfDaysStr)
-	if err != nil {
-		noOfDays = 1
-	}
-
-	// Parse the command-line flags
-	flag.IntVar(&daysFlag, "days", noOfDays, "Number of days to forecast")
-	flag.StringVar(&cityFlag, "city", os.Getenv("DEFAULT_LOCATION"), "Enter the name of the city")
-	flag.Parse()
-
-	// Retrieve the access token from the environment
-	token := os.Getenv("WEATHER_ACCESS_TOKEN")
-
-	// Construct the URL
-	url := fmt.Sprintf("https://api.weatherapi.com/v1/forecast.json?q=%s&days=%d&key=%s",
-		cityFlag, daysFlag, token)
-
-	// Call the API
-	// If Status is not OK 200, panic
-	// Read the response body
-	// Unmarshal the json into the provide
-	// struct reference
-	var weather sun.Weather
-	action := func() {
-		weather = getWeatherData(url)
-	}
-	_ = spinner.New().Title("Getting your weather data...").Action(action).Run()
-
-	// Extract data from the struct
-	location, current, forecastDay := weather.Location, weather.Current, weather.Forecast.ForecastDay
-
-	rows = append(rows, table.Row{"------", "-------",
-		fmt.Sprintf("%s, %s", location.Name, location.Country),
-		"-----", "----", "-----"})
-
-	// Build and display current conditions
-	rows = append(rows, table.Row{
-		"Now",
-		fmt.Sprintf("%2.0f", current.Temperature),
-		fmt.Sprintf("%-25s", current.Condition.Text),
-		fmt.Sprintf("%3d%%", current.ChanceOfRain),
-		fmt.Sprintf("%3.0f", current.WindSpeed),
-		fmt.Sprintf("%3.0f", current.Gusts),
-	})
-
-	for _, fday := range forecastDay {
-		hours := fday.Hours
-
-		fdate := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
-		dayName := time.Unix(fday.DateEpoch, 0).Weekday().String()
-
-		rows = append(rows, table.Row{"-----", "-------", fmt.Sprintf("%s (%s)", fdate, dayName),
-			"-----", "----", "-----"})
-
-		// Get the hourly forecasts and
-		// construct an output message
-		for _, hour := range hours {
-			date := time.Unix(hour.DateEpoch, 0)
-
-			// If the hourly forecast is in the past
-			// ignore it and continue along
-			if date.Before(time.Now()) {
-				continue
-			}
-
-			rows = append(rows, table.Row{
-				date.Format("15:04"),
-				fmt.Sprintf("%2.0f", hour.Temperature),
-				fmt.Sprintf("%-25s", hour.Condition.Text),
-				fmt.Sprintf("%3d%%", hour.ChanceOfRain),
-				fmt.Sprintf("%3.0f", hour.WindSpeed),
-				fmt.Sprintf("%3.0f", hour.Gusts),
-			})
-
-		}
-	}
-
-	t := setupTable(columns, rows)
-
-	m := model{t}
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+	switch m.status {
+	case loading:
+		return m.th.Base.Render(fmt.Sprintf(" %s Fetching weather for %s (%dd)…", m.spin.View(), m.city, m.days)) + "\n"
+	case errorState:
+		msg := m.th.Error.Render(fmt.Sprintf("Error: %v", m.err)) + "\nPress r to retry, q to quit."
+		return m.th.Base.Render(msg) + "\n"
+	case success:
+		header := m.th.Header.Render(fmt.Sprintf(" Weather for %s  •  %dd days", m.city, m.days))
+		footer := m.th.Footer.Render(fmt.Sprintf("%s  •  Updated %s", m.help.View(m.keys), m.lastUpd.Format(time.Kitchen)))
+		return m.th.Base.Render(header+"\n"+m.table.View()) + "\n" + footer + "\n"
+	default:
+		return m.th.Base.Render("")
 	}
 }
 
-func getWeatherData(url string) sun.Weather {
-	res, err := http.Get(url)
-	if err != nil {
-		panic(err)
-	}
-
-	defer func() {
-		if cerr := res.Body.Close(); cerr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cerr)
-		}
-	}()
-
-	if res.StatusCode != 200 {
-		panic("Weather Api not available")
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	var weather sun.Weather
-	err = json.Unmarshal(body, &weather)
-	if err != nil {
-		panic(err)
-	}
-	return weather
-}
-
-// setupColumns configures the columns for the table
-func setupColumns() []table.Column {
-	columns := []table.Column{
+func defaultColumns() []table.Column {
+	return []table.Column{
 		{Title: "Time", Width: 6},
 		{Title: "Temp °C", Width: 7},
 		{Title: "Conditions", Width: 25},
@@ -211,35 +171,92 @@ func setupColumns() []table.Column {
 		{Title: "Wind", Width: 4},
 		{Title: "Gusts", Width: 5},
 	}
-	return columns
 }
 
-func setupEnvironment() {
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
+func setAdaptiveDimensions(m *model) {
+	min := 6 + 7 + 5 + 4 + 5 + 5 // base for non-Conditions plus spacing
+	cond := m.width - min
+	if cond < 20 {
+		cond = 20
+	}
+	cols := []table.Column{
+		{Title: "Time", Width: 6},
+		{Title: "Temp °C", Width: 7},
+		{Title: "Conditions", Width: cond},
+		{Title: "Rain", Width: 5},
+		{Title: "Wind", Width: 4},
+		{Title: "Gusts", Width: 5},
+	}
+	m.table.SetHeight(max(7, m.height-5))
+	m.table.SetColumns(cols)
+}
+
+func max(a, b int) int { if a > b { return a }; return b }
+
+func buildRows(w sun.Weather) []table.Row {
+	var rows []table.Row
+	loc, cur, days := w.Location, w.Current, w.Forecast.ForecastDay
+	rows = append(rows, table.Row{"------", "-------", fmt.Sprintf("%s, %s", loc.Name, loc.Country), "-----", "----", "-----"})
+	rows = append(rows, table.Row{
+		"Now",
+		fmt.Sprintf("%2.0f", cur.Temperature),
+		fmt.Sprintf("%-25s", cur.Condition.Text),
+		fmt.Sprintf("%3d%%", cur.ChanceOfRain),
+		fmt.Sprintf("%3.0f", cur.WindSpeed),
+		fmt.Sprintf("%3.0f", cur.Gusts),
+	})
+	for _, f := range days {
+		hours := f.Hours
+		fdate := time.Unix(f.DateEpoch, 0)
+		rows = append(rows, table.Row{"-----", "-------", fmt.Sprintf("%s (%s)", fdate.Format("2006-01-02"), fdate.Weekday().String()), "-----", "----", "-----"})
+		for _, h := range hours {
+			d := time.Unix(h.DateEpoch, 0)
+			if d.Before(time.Now()) { continue }
+			rows = append(rows, table.Row{
+				d.Format("15:04"),
+				fmt.Sprintf("%2.0f", h.Temperature),
+				fmt.Sprintf("%-25s", h.Condition.Text),
+				fmt.Sprintf("%3d%%", h.ChanceOfRain),
+				fmt.Sprintf("%3.0f", h.WindSpeed),
+				fmt.Sprintf("%3.0f", h.Gusts),
+			})
+		}
+	}
+	return rows
+}
+
+func fetchWeatherCmd(city string, days int, client *sun.Client) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		w, err := client.Forecast(ctx, city, days)
+		if err != nil {
+			return errMsg{err}
+		}
+		return loadedMsg{w: w}
 	}
 }
 
-func setupTable(columns []table.Column, rows []table.Row) table.Model {
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(height),
+func main() {
+	_ = godotenv.Load()
+	var (
+		city string
+		days int
 	)
-
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
-		Bold(false)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
-	t.SetStyles(s)
-
-	return t
+	defCity := os.Getenv("DEFAULT_LOCATION")
+	if defCity == "" { defCity = "London" }
+	defDays := 1
+	if v := os.Getenv("NO_OF_DAYS"); v != "" { if n, err := strconvAtoiSafe(v); err == nil { defDays = n } }
+	flag.StringVar(&city, "city", defCity, "Enter the name of the city")
+	flag.IntVar(&days, "days", defDays, "Number of days to forecast")
+	flag.Parse()
+	key := os.Getenv("WEATHER_ACCESS_TOKEN")
+	client := &sun.Client{APIKey: key, HTTP: &http.Client{Timeout: 10 * time.Second}}
+	m := initialModel(city, days, client)
+	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		fmt.Println("Error:", err)
+		os.Exit(1)
+	}
 }
+
+func strconvAtoiSafe(s string) (int, error) { return strconv.Atoi(s) }
