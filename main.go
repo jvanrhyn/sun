@@ -171,11 +171,11 @@ func defaultColumns() []table.Column {
 
 func setAdaptiveDimensions(m *model) {
 	cols := ui.AdaptiveColumns(m.width)
-	m.table.SetHeight(max(7, m.height-5))
+	m.table.SetHeight(maxInt(7, m.height-5))
 	m.table.SetColumns(cols)
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
