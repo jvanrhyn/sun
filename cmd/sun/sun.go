@@ -1,6 +1,7 @@
 package sun
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,14 +23,13 @@ var (
 // parses command-line flags, constructs a URL to call a weather API, and processes
 // the response to display current weather conditions and a forecast.
 //
-// The function does not take any parameters and does not return any values.
+// It handles errors by reporting them to stderr and returning early (no panics).
 func Run() {
-
-	// Load environment variables from .env file
+	// Load environment variables from .env file (optional)
 	setupEnvironment()
 
 	// Get the number of days to forecast
-	var noOfDaysStr = os.Getenv("NO_OF_DAYS")
+	noOfDaysStr := os.Getenv("NO_OF_DAYS")
 	noOfDays, err := strconv.Atoi(noOfDaysStr)
 	if err != nil {
 		noOfDays = 1
@@ -47,35 +47,45 @@ func Run() {
 	url := fmt.Sprintf("https://api.weatherapi.com/v1/forecast.json?q=%s&days=%d&key=%s",
 		cityFlag, daysFlag, token)
 
-	// Call the API
-	res, err := http.Get(url)
+	// Call the API with context and timeout
+	client := &http.Client{Timeout: 10 * time.Second}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "build request error: %v\n", err)
+		return
 	}
-
+	res, err := client.Do(req)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "request error: %v\n", err)
+		return
+	}
 	defer func() {
 		if cErr := res.Body.Close(); cErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error closing response body: %v\n", cErr)
+			_, _ = fmt.Fprintf(os.Stderr, "error closing response body: %v\n", cErr)
 		}
 	}()
 
-	// If Status is not OK 200, panic
-	if res.StatusCode != 200 {
-		panic("Weather Api not available")
+	// If Status is not OK, report and return
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		_, _ = fmt.Fprintf(os.Stderr, "weather api: status %d: %s\n", res.StatusCode, string(b))
+		return
 	}
 
 	// Read the response body
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "read body error: %v\n", err)
+		return
 	}
 
-	// Unmarshal the json into the provide
-	// struct reference
+	// Unmarshal the json into the provided struct reference
 	var weather Weather
-	err = json.Unmarshal(body, &weather)
-	if err != nil {
-		panic(err)
+	if err := json.Unmarshal(body, &weather); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "json decode error: %v\n", err)
+		return
 	}
 
 	// Extract data from the struct
@@ -95,29 +105,23 @@ func Run() {
 
 	for _, fday := range forecastDay {
 		hours := fday.Hours
-
 		date := time.Unix(fday.DateEpoch, 0).Format("2006-01-02")
 
-		// get the name of the dat for date
+		// get the name of the day for date
 		dayName := time.Unix(fday.DateEpoch, 0).Weekday().String()
 
 		fmt.Printf("%s (%s)\n", date, dayName)
-		// Get the hourly forecasts and
-		// construct an output message
+		// Get the hourly forecasts and construct an output message
 		for _, hour := range hours {
-			date := time.Unix(hour.DateEpoch, 0)
-
-			// If the hourly forecast is in the past
-			// ignore it and continue along
-			if date.Before(time.Now()) {
+			hourDate := time.Unix(hour.DateEpoch, 0)
+			if hourDate.Before(time.Now()) {
 				continue
 			}
 
 			message = fmt.Sprintf("%s | %2.0f°c | %-20s | %4d%% rain | wind %3.0f(%2.0f) km/h",
-				date.Format("15:04"), hour.Temperature, hour.Condition.Text, hour.ChanceOfRain, hour.WindSpeed, hour.Gusts)
+				hourDate.Format("15:04"), hour.Temperature, hour.Condition.Text, hour.ChanceOfRain, hour.WindSpeed, hour.Gusts)
 
-			// Chance of rain and Wind gusts
-			// will change the color.
+			// Chance of rain and Wind gusts will change the color.
 			if hour.ChanceOfRain < 50 {
 				if hour.Gusts < 45 {
 					color.Green(message)
@@ -136,8 +140,8 @@ func Run() {
 }
 
 func setupEnvironment() {
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
+	// .env is optional in many environments; log a warning instead of panicking
+	if err := godotenv.Load(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "warning: .env not loaded: %v\n", err)
 	}
 }

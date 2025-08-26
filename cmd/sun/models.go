@@ -1,5 +1,7 @@
 package sun
 
+// Weather represents the API response for location, current conditions, and forecast.
+// It mirrors the JSON shape returned by WeatherAPI.
 type (
 	Weather struct {
 		Location struct {

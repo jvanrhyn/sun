@@ -35,13 +35,15 @@ type loadedMsg struct{ w sun.Weather }
 type errMsg struct{ err error }
 
 type keyMap struct {
-	Quit key.Binding
+	Quit        key.Binding
 	ToggleFocus key.Binding
-	Refresh key.Binding
-	Help key.Binding
+	Refresh     key.Binding
+	Help        key.Binding
 }
 
-func (k keyMap) ShortHelp() []key.Binding { return []key.Binding{k.Refresh, k.ToggleFocus, k.Help, k.Quit} }
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Refresh, k.ToggleFocus, k.Help, k.Quit}
+}
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{k.Refresh, k.ToggleFocus, k.Help, k.Quit}}
 }
@@ -68,10 +70,10 @@ func initialModel(city string, days int, client *sun.Client) model {
 	t := table.New(table.WithColumns(defaultColumns()), table.WithRows(nil), table.WithFocused(true))
 	h := help.New()
 	return model{
-		table:  t,
-		spin:   sp,
-		help:   h,
-		th:     ui.DefaultTheme(),
+		table: t,
+		spin:  sp,
+		help:  h,
+		th:    ui.DefaultTheme(),
 		keys: keyMap{
 			Quit:        key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 			ToggleFocus: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "toggle focus")),
@@ -163,35 +165,22 @@ func (m model) View() string {
 }
 
 func defaultColumns() []table.Column {
-	return []table.Column{
-		{Title: "Time", Width: 6},
-		{Title: "Temp °C", Width: 7},
-		{Title: "Conditions", Width: 25},
-		{Title: "Rain", Width: 5},
-		{Title: "Wind", Width: 4},
-		{Title: "Gusts", Width: 5},
-	}
+	// start with a reasonable default width; it will be adapted on first resize
+	return ui.AdaptiveColumns(80)
 }
 
 func setAdaptiveDimensions(m *model) {
-	min := 6 + 7 + 5 + 4 + 5 + 5 // base for non-Conditions plus spacing
-	cond := m.width - min
-	if cond < 20 {
-		cond = 20
-	}
-	cols := []table.Column{
-		{Title: "Time", Width: 6},
-		{Title: "Temp °C", Width: 7},
-		{Title: "Conditions", Width: cond},
-		{Title: "Rain", Width: 5},
-		{Title: "Wind", Width: 4},
-		{Title: "Gusts", Width: 5},
-	}
+	cols := ui.AdaptiveColumns(m.width)
 	m.table.SetHeight(max(7, m.height-5))
 	m.table.SetColumns(cols)
 }
 
-func max(a, b int) int { if a > b { return a }; return b }
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 func buildRows(w sun.Weather) []table.Row {
 	var rows []table.Row
@@ -211,7 +200,9 @@ func buildRows(w sun.Weather) []table.Row {
 		rows = append(rows, table.Row{"-----", "-------", fmt.Sprintf("%s (%s)", fdate.Format("2006-01-02"), fdate.Weekday().String()), "-----", "----", "-----"})
 		for _, h := range hours {
 			d := time.Unix(h.DateEpoch, 0)
-			if d.Before(time.Now()) { continue }
+			if d.Before(time.Now()) {
+				continue
+			}
 			rows = append(rows, table.Row{
 				d.Format("15:04"),
 				fmt.Sprintf("%2.0f", h.Temperature),
@@ -238,20 +229,27 @@ func fetchWeatherCmd(city string, days int, client *sun.Client) tea.Cmd {
 }
 
 func main() {
+	// .env is optional; ignore error if not present to allow environment-based config
 	_ = godotenv.Load()
 	var (
 		city string
 		days int
 	)
 	defCity := os.Getenv("DEFAULT_LOCATION")
-	if defCity == "" { defCity = "London" }
+	if defCity == "" {
+		defCity = "London"
+	}
 	defDays := 1
-	if v := os.Getenv("NO_OF_DAYS"); v != "" { if n, err := strconvAtoiSafe(v); err == nil { defDays = n } }
+	if v := os.Getenv("NO_OF_DAYS"); v != "" {
+		if n, err := strconvAtoiSafe(v); err == nil {
+			defDays = n
+		}
+	}
 	flag.StringVar(&city, "city", defCity, "Enter the name of the city")
 	flag.IntVar(&days, "days", defDays, "Number of days to forecast")
 	flag.Parse()
-	key := os.Getenv("WEATHER_ACCESS_TOKEN")
-	client := &sun.Client{APIKey: key, HTTP: &http.Client{Timeout: 10 * time.Second}}
+	apiKey := os.Getenv("WEATHER_ACCESS_TOKEN")
+	client := &sun.Client{APIKey: apiKey, HTTP: &http.Client{Timeout: 10 * time.Second}}
 	m := initialModel(city, days, client)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Println("Error:", err)
