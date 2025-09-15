@@ -137,14 +137,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.table, cmd = m.table.Update(msg)
 		return m, cmd
 	default:
-		var cmds []tea.Cmd
-		var scmd tea.Cmd
-		m.spin, scmd = m.spin.Update(msg)
-		cmds = append(cmds, scmd)
-		var tcmd tea.Cmd
-		m.table, tcmd = m.table.Update(msg)
-		cmds = append(cmds, tcmd)
-		return m, tea.Batch(cmds...)
+		var commands []tea.Cmd
+		var spinCommands tea.Cmd
+		m.spin, spinCommands = m.spin.Update(msg)
+		commands = append(commands, spinCommands)
+		var teaCommand tea.Cmd
+		m.table, teaCommand = m.table.Update(msg)
+		commands = append(commands, teaCommand)
+		return m, tea.Batch(commands...)
 	}
 }
 
